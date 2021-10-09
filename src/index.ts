@@ -189,7 +189,7 @@ const refreshToken = async (requestRefresh: TokenRefreshRequest): Promise<Token>
   } catch (error) {
     // Failed to refresh token
     const status = error?.response?.status
-    if (status === 401 || status === 422) {
+    if (status === 400 || status === 401 || status === 422) {
       // The refresh token is invalid so remove the stored tokens
       localStorage.removeItem(STORAGE_KEY)
       throw new Error(`Got ${status} on token refresh; clearing both auth tokens`)
