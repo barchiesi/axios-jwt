@@ -76,7 +76,7 @@ export const getAccessToken = (): Token | undefined => {
  * @param {requestRefresh} requestRefresh - Function that is used to get a new access token
  * @returns {string} Access token
  */
-export const refreshTokenIfNeeded = async (requestRefresh: TokenRefreshRequest): Promise<Token | undefined> => {
+export const refreshTokenIfNeeded = async (requestRefresh: TokenRefreshRequest, logout: LogoutRequest): Promise<Token | undefined> => {
   // use access token (if we have it)
   let accessToken = getAccessToken()
 
@@ -84,7 +84,7 @@ export const refreshTokenIfNeeded = async (requestRefresh: TokenRefreshRequest):
   if (!accessToken || isTokenExpired(accessToken)) {
     // do refresh
 
-    accessToken = await refreshToken(requestRefresh)
+    accessToken = await refreshToken(requestRefresh, logout)
   }
 
   return accessToken
@@ -168,7 +168,7 @@ const getExpiresIn = (token: Token): number => {
  * @param {requestRefresh} requestRefresh - Function that is used to get a new access token
  * @returns {string} - Fresh access token
  */
-const refreshToken = async (requestRefresh: TokenRefreshRequest): Promise<Token> => {
+const refreshToken = async (requestRefresh: TokenRefreshRequest, logout: LogoutRequest): Promise<Token> => {
   const refreshToken = getRefreshToken()
   if (!refreshToken) throw new Error('No refresh token available')
 
@@ -192,6 +192,9 @@ const refreshToken = async (requestRefresh: TokenRefreshRequest): Promise<Token>
     if (status === 400 || status === 401 || status === 422) {
       // The refresh token is invalid so remove the stored tokens
       localStorage.removeItem(STORAGE_KEY)
+      if (logout) {
+        await logout()
+      }
       throw new Error(`Got ${status} on token refresh; clearing both auth tokens`)
     } else {
       // A different error, probably network error
@@ -202,12 +205,14 @@ const refreshToken = async (requestRefresh: TokenRefreshRequest): Promise<Token>
   }
 }
 
+export type LogoutRequest = () => Promise<undefined>
 export type TokenRefreshRequest = (refreshToken: Token) => Promise<Token | IAuthTokens>
 
 export interface IAuthTokenInterceptorConfig {
   header?: string
   headerPrefix?: string
-  requestRefresh: TokenRefreshRequest
+  requestRefresh: TokenRefreshRequest,
+  logout: LogoutRequest
 }
 
 /**
@@ -223,6 +228,7 @@ export const authTokenInterceptor = ({
   header = 'Authorization',
   headerPrefix = 'Bearer ',
   requestRefresh,
+  logout,
 }: IAuthTokenInterceptorConfig) => async (requestConfig: AxiosRequestConfig): Promise<AxiosRequestConfig> => {
   // We need refresh token to do any authenticated requests
   if (!getRefreshToken()) return requestConfig
@@ -242,7 +248,7 @@ export const authTokenInterceptor = ({
   // Do refresh if needed
   let accessToken
   try {
-    accessToken = await refreshTokenIfNeeded(requestRefresh)
+    accessToken = await refreshTokenIfNeeded(requestRefresh, logout)
     resolveQueue(accessToken)
   } catch (error) {
     declineQueue(error)
